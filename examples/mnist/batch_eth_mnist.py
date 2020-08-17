@@ -25,6 +25,10 @@ from bindsnet.analysis.plotting import (
     plot_voltages,
 )
 
+# try to use the pytorch datasets 
+#from torchvision.datasets import MNIST
+#from torch.utils.data import DataLoader
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--seed", type=int, default=0)
 parser.add_argument("--n_neurons", type=int, default=100)
@@ -110,6 +114,13 @@ dataset = MNIST(
         [transforms.ToTensor(), transforms.Lambda(lambda x: x * intensity)]
     ),
 )
+dataset = MNIST(root=os.path.join(ROOT_DIR, "data", "MNIST"),
+    download=True,
+    transform=transforms.Compose(
+        [transforms.ToTensor(), transforms.Lambda(lambda x: x * intensity)]
+    ),
+)
+
 
 # Neuron assignments and spike proportions.
 n_classes = 10
@@ -168,7 +179,7 @@ for epoch in range(n_epochs):
 
     for step, batch in enumerate(tqdm(train_dataloader)):
         # Get next input sample.
-        inputs = {"X": batch["encoded_image"]}
+        inputs = {"X": batch["encoded_image"].permute(1, 0, 2, 3)}
         if gpu:
             inputs = {k: v.cuda() for k, v in inputs.items()}
 
@@ -229,7 +240,8 @@ for epoch in range(n_epochs):
         labels.extend(batch["label"].tolist())
 
         # Run the network on the input.
-        network.run(inputs=inputs, time=time, input_time_dim=1)
+        network.run(inputs=inputs, time=time, input_time_dim=1, encoder=PoissonEncoder)
+        #network.run(inputs=inputs, time=time, input_time_dim=1)
 
         # Add to spikes recording.
         s = spikes["Ae"].get("s").permute((1, 0, 2))
@@ -313,7 +325,7 @@ start = t()
 
 for step, batch in enumerate(tqdm(test_dataloader)):
     # Get next input sample.
-    inputs = {"X": batch["encoded_image"]}
+    inputs = {"X": batch["encoded_image"].permute(1, 0, 2, 3)}
     if gpu:
         inputs = {k: v.cuda() for k, v in inputs.items()}
 

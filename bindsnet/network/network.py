@@ -7,7 +7,7 @@ from .monitors import AbstractMonitor
 from .nodes import Nodes
 from .topology import AbstractConnection
 from ..learning.reward import AbstractReward
-
+from ..encoding.encoders import Encoder
 
 def load(file_name: str, map_location: str = "cpu", learning: bool = None) -> "Network":
     # language=rst
@@ -83,6 +83,7 @@ class Network(torch.nn.Module):
 
     def __init__(
         self,
+        time: int = 250,
         dt: float = 1.0,
         batch_size: int = 1,
         learning: bool = True,
@@ -91,7 +92,8 @@ class Network(torch.nn.Module):
         # language=rst
         """
         Initializes network object.
-
+        
+        :param time: Length of Input for encoder.
         :param dt: Simulation timestep.
         :param batch_size: Mini-batch size.
         :param learning: Whether to allow connection updates. True by default.
@@ -99,7 +101,8 @@ class Network(torch.nn.Module):
             reward-modulated learning.
         """
         super().__init__()
-
+        
+        self.time = time 
         self.dt = dt
         self.batch_size = batch_size
 
@@ -113,6 +116,7 @@ class Network(torch.nn.Module):
             self.reward_fn = reward_fn()
         else:
             self.reward_fn = None
+    
 
     def add_layer(self, layer: Nodes, name: str) -> None:
         # language=rst
@@ -236,7 +240,8 @@ class Network(torch.nn.Module):
         return inputs
 
     def run(
-        self, inputs: Dict[str, torch.Tensor], time: int, one_step=False, **kwargs
+        self, inputs: Dict[str, torch.Tensor], time: int, one_step=False, encoder: Optional[Type[Encoder]] = None,
+ **kwargs
     ) -> None:
         # language=rst
         """
@@ -248,6 +253,8 @@ class Network(torch.nn.Module):
         :param one_step: Whether to run the network in "feed-forward" mode, where inputs
             propagate all the way through the network in a single simulation time step.
             Layers are updated in the order they are added to the network.
+        :param encoder: Optional class used to encode the input 
+
 
         Keyword arguments:
 
@@ -295,6 +302,11 @@ class Network(torch.nn.Module):
             plt.title('Input spiking')
             plt.show()
         """
+        if encoder is not None: 
+            self.encoder = encoder
+        else: 
+            self.encoder = None 
+
         # Parse keyword arguments.
         clamps = kwargs.get("clamp", {})
         unclamps = kwargs.get("unclamp", {})
@@ -304,10 +316,23 @@ class Network(torch.nn.Module):
         # Compute reward.
         if self.reward_fn is not None:
             kwargs["reward"] = self.reward_fn.compute(**kwargs)
-
+               
         # Dynamic setting of batch size.
         if inputs != {}:
             for key in inputs:
+                # Encoding step if encoder is provided 
+                if self.encoder != None: 
+                    input_shape = inputs[key].squeeze(0).shape
+                    #print(input_shape)
+                    inputs[key] = self.encoder(self.time, self.dt).enc(inputs[key].flatten(), self.time)
+                    
+                    # rearange to form time, batch_size, 
+                    #inputs[key].view(250,32,28,28)
+                    new_input_shape = (self.time,) + input_shape
+                    #print(new_input_shape)
+                    inputs[key] = inputs[key].view(new_input_shape)
+                    #print(inputs[key].shape)
+
                 # goal shape is [time, batch, n_0, ...]
                 if len(inputs[key].size()) == 1:
                     # current shape is [n_0, ...]
@@ -331,7 +356,10 @@ class Network(torch.nn.Module):
                         self.monitors[m].reset_state_variables()
 
                 break
-
+        
+        #print(inputs["X"].shape)
+        #print(self.batch_size)
+        
         # Effective number of timesteps.
         timesteps = int(time / self.dt)
 
@@ -353,6 +381,8 @@ class Network(torch.nn.Module):
                 if one_step:
                     # Get input to this layer (one-step mode).
                     current_inputs.update(self._get_inputs(layers=[l]))
+
+                #print(current_inputs[l].shape)
 
                 self.layers[l].forward(x=current_inputs[l])
 
