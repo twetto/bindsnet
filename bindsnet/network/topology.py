@@ -854,6 +854,7 @@ class MyelinConnection(AbstractConnection):
         :param float mmin: Minimum allowed value on the connection myelin.
         :param float mmax: Maximum allowed value on the connection myelin.
         :param float norm: Total weight per target neuron normalization constant.
+        :param float myelin_avg: Average delay per target neuron normalization constant.
         :param float trace_decay: Decay multiplier for a synapse's output spike trace
         """
         super().__init__(source, target, nu, reduction, weight_decay, **kwargs)
@@ -869,10 +870,11 @@ class MyelinConnection(AbstractConnection):
                 w = torch.clamp(w, self.wmin, self.wmax)
         self.w = Parameter(w, requires_grad=False)
 
-        self.mmin = kwargs.get("mmin", 0.0)
+        self.mmin = kwargs.get("mmin", 0.05)
         self.mmax = kwargs.get("mmax", 1.0)
 
-        self.trace_decay = kwargs.get("trace_decay", 0.9)
+        self.myelin_avg = kwargs.get("myelin_avg", (self.mmax + self.mmin) * 0.5)
+        self.trace_decay = kwargs.get("trace_decay", 0.95)
 
         m = kwargs.get("m", None)
         if m is None:
@@ -905,7 +907,7 @@ class MyelinConnection(AbstractConnection):
         self.out_spike += self.in_spike * self.m
 
         # if the output spike buffer is full?
-        mask = self.out_spike > 1.0
+        mask = self.out_spike >= 1.0
         mask = mask.float()
 
         self.out_spike -= mask  # decrease the "output" spike
@@ -914,10 +916,9 @@ class MyelinConnection(AbstractConnection):
         self.spike_trace += mask
         self.spike_trace *= self.trace_decay
 
-        # Compute multiplication of incoming spike by weights
+        # Compute multiplication of incoming spikes by weights
         post = mask * self.w
         return post.sum(0)
-        # return post.sum(0).view(s.size(0), *self.target.shape)
 
     def update(self, **kwargs) -> None:
         # language=rst
@@ -929,13 +930,19 @@ class MyelinConnection(AbstractConnection):
     def normalize(self) -> None:
         # language=rst
         """
-        Normalize weights so each target neuron has sum of connection weights equal to
-        ``self.norm``.
+        Normalize weights so each target neuron has sum of connection
+        weights & delays equal to ``self.norm``.
+        Normalize delays so each target neuron has avg of connection
+        weights & delays equal to ``self.myelin_avg``.
         """
         if self.norm is not None:
             w_abs_sum = self.w.abs().sum(0).unsqueeze(0)
             w_abs_sum[w_abs_sum == 0] = 1.0
             self.w *= self.norm / w_abs_sum
+
+        m_avg = self.m.sum(0).unsqueeze(0) / self.source.n
+        m_avg[m_avg == 0] = 1.0
+        self.m *= self.myelin_avg / m_avg
 
     def reset_state_variables(self) -> None:
         # language=rst

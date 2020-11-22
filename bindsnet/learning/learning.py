@@ -1032,26 +1032,14 @@ class PostPreM(LearningRule):
         Post-pre learning rule for ``Connection`` subclass of ``AbstractConnection``
         class.
         """
-        batch_size = self.source.batch_size
-
-        # Pre-synaptic update.
-        if self.nu[0]:
-            source_s = self.source.s.view(batch_size, -1).unsqueeze(2).float()
-            target_x = self.target.x.view(batch_size, -1).unsqueeze(1) * self.nu[0]
-            update = self.reduction(torch.bmm(source_s, target_x), dim=0)
-            self.connection.w -= update
-            self.connection.m -= update
-            del source_s, target_x
 
         # Post-synaptic update.
-        if self.nu[1]:
-            target_s = (
-                self.target.s.view(batch_size, -1).unsqueeze(1).float() * self.nu[1]
-            )
-            source_x = self.source.x.view(batch_size, -1).unsqueeze(2)
-            update = self.reduction(torch.bmm(source_x, target_s), dim=0)
-            self.connection.w += update
-            self.connection.m += update
-            del source_x, target_s
+        target_s = self.target.s.view(-1).float() * self.nu[1]
+        source_x = self.connection.spike_trace
+
+        update = source_x * target_s
+
+        self.connection.w += update
+        self.connection.m += update
 
         super().update()
