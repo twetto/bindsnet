@@ -870,8 +870,8 @@ class MyelinConnection(AbstractConnection):
                 w = torch.clamp(w, self.wmin, self.wmax)
         self.w = Parameter(w, requires_grad=False)
 
-        self.mmin = kwargs.get("mmin", 0.05)
-        self.mmax = kwargs.get("mmax", 1.0)
+        self.mmin = kwargs.get("mmin", 0.025)
+        self.mmax = kwargs.get("mmax", 0.25)
 
         self.myelin_avg = kwargs.get("myelin_avg", (self.mmax + self.mmin) * 0.5)
         self.trace_decay = kwargs.get("trace_decay", 0.95)

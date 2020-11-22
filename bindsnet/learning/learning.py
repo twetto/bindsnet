@@ -1036,7 +1036,6 @@ class PostPreM(LearningRule):
         # Post-synaptic update.
         target_s = self.target.s.view(-1).float() * self.nu[1]
         source_x = self.connection.spike_trace
-
         update = source_x * target_s
 
         self.connection.w += update
