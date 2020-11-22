@@ -3,5 +3,6 @@ from .models import (
     DiehlAndCook2015,
     DiehlAndCook2015v2,
     IncreasingInhibitionNetwork,
+    IncreasingInhibitionNetworkM,
     LocallyConnectedNetwork,
 )

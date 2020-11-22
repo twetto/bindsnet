@@ -814,3 +814,135 @@ class SparseConnection(AbstractConnection):
         Contains resetting logic for the connection.
         """
         super().reset_state_variables()
+
+
+class MyelinConnection(AbstractConnection):
+    # language=rst
+    """
+    Myelin variant of Connection
+    Does not support batching
+    """
+
+    def __init__(
+        self,
+        source: Nodes,
+        target: Nodes,
+        nu: Optional[Union[float, Sequence[float]]] = None,
+        reduction: Optional[callable] = None,
+        weight_decay: float = 0.0,
+        **kwargs
+    ) -> None:
+        # language=rst
+        """
+        Instantiates a :code:`Connection` object.
+
+        :param source: A layer of nodes from which the connection originates.
+        :param target: A layer of nodes to which the connection connects.
+        :param nu: Learning rate for both pre- and post-synaptic events.
+        :param reduction: Method for reducing parameter updates along the minibatch
+            dimension.
+        :param weight_decay: Constant multiple to decay weights by on each iteration.
+
+        Keyword arguments:
+
+        :param LearningRule update_rule: Modifies connection parameters according to
+            some rule.
+        :param torch.Tensor w: Strengths of synapses.
+        :param float wmin: Minimum allowed value on the connection weights.
+        :param float wmax: Maximum allowed value on the connection weights.
+        :param torch.Tensor m: Myelin value between neurons
+        :param float mmin: Minimum allowed value on the connection myelin.
+        :param float mmax: Maximum allowed value on the connection myelin.
+        :param float norm: Total weight per target neuron normalization constant.
+        :param float trace_decay: Decay multiplier for a synapse's output spike trace
+        """
+        super().__init__(source, target, nu, reduction, weight_decay, **kwargs)
+
+        w = kwargs.get("w", None)
+        if w is None:
+            if self.wmin == -np.inf or self.wmax == np.inf:
+                w = torch.clamp(torch.rand(source.n, target.n), self.wmin, self.wmax)
+            else:
+                w = self.wmin + torch.rand(source.n, target.n) * (self.wmax - self.wmin)
+        else:
+            if self.wmin != -np.inf or self.wmax != np.inf:
+                w = torch.clamp(w, self.wmin, self.wmax)
+        self.w = Parameter(w, requires_grad=False)
+
+        self.mmin = kwargs.get("mmin", 0.0)
+        self.mmax = kwargs.get("mmax", 1.0)
+
+        self.trace_decay = kwargs.get("trace_decay", 0.9)
+
+        m = kwargs.get("m", None)
+        if m is None:
+            m = self.mmin + torch.rand(source.n, target.n) * (self.mmax - self.mmin)
+        else:
+            m = torch.clamp(m, self.mmin, self.mmax)
+
+        self.m = Parameter(m, requires_grad=False)
+
+        self.in_spike = Parameter(torch.zeros_like(self.w), requires_grad=False)
+        self.out_spike = Parameter(torch.zeros_like(self.w), requires_grad=False)
+        self.spike_trace = Parameter(torch.zeros_like(self.w), requires_grad=False)
+
+    def compute(self, s: torch.Tensor) -> torch.Tensor:
+        # language=rst
+        """
+        Compute pre-activations given spikes using connection weights.
+
+        :param s: Incoming spikes.
+        :return: Incoming spikes multiplied by synaptic weights (with or without
+                 decaying spike activation).
+        """
+
+        # add incoming spikes to the input buffer
+        s = s.flatten().unsqueeze(1)
+        self.in_spike += s.repeat(1, self.in_spike.shape[1]).float()
+
+        # increment the "output" spike buffer at speed "myelin"
+        # according to the "input" spike buffer
+        self.out_spike += self.in_spike * self.m
+
+        # if the output spike buffer is full?
+        mask = self.out_spike > 1.0
+        mask = mask.float()
+
+        self.out_spike -= mask  # decrease the "output" spike
+        self.in_spike -= mask  # decrease the transmitted "input" spike
+
+        self.spike_trace += mask
+        self.spike_trace *= self.trace_decay
+
+        # Compute multiplication of incoming spike by weights
+        post = mask * self.w
+        return post.sum(0)
+        # return post.sum(0).view(s.size(0), *self.target.shape)
+
+    def update(self, **kwargs) -> None:
+        # language=rst
+        """
+        Compute connection's update rule.
+        """
+        super().update(**kwargs)
+
+    def normalize(self) -> None:
+        # language=rst
+        """
+        Normalize weights so each target neuron has sum of connection weights equal to
+        ``self.norm``.
+        """
+        if self.norm is not None:
+            w_abs_sum = self.w.abs().sum(0).unsqueeze(0)
+            w_abs_sum[w_abs_sum == 0] = 1.0
+            self.w *= self.norm / w_abs_sum
+
+    def reset_state_variables(self) -> None:
+        # language=rst
+        """
+        Contains resetting logic for the connection.
+        """
+        self.in_spike.zero_()
+        self.out_spike.zero_()
+        self.spike_trace.zero_()
+        super().reset_state_variables()
