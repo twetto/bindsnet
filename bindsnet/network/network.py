@@ -106,6 +106,7 @@ class Network(torch.nn.Module):
         self.layers = {}
         self.connections = {}
         self.monitors = {}
+        self.first_spike = None
 
         self.train(learning)
 
@@ -305,6 +306,8 @@ class Network(torch.nn.Module):
         if self.reward_fn is not None:
             kwargs["reward"] = self.reward_fn.compute(**kwargs)
 
+        self.first_spike = kwargs.get("first_spike", None)
+
         # Dynamic setting of batch size.
         if inputs != {}:
             for key in inputs:
@@ -395,6 +398,10 @@ class Network(torch.nn.Module):
             # Record state variables of interest.
             for m in self.monitors:
                 self.monitors[m].record()
+
+            if self.first_spike is not None:
+                if self.first_spike.s.sum() > 0:
+                    break
 
         # Re-normalize connections.
         for c in self.connections:

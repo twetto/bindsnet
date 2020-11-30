@@ -491,6 +491,7 @@ class IncreasingInhibitionNetworkM(Network):
             w=w,
             update_rule=PostPreM,
             nu=nu,
+            # myelin_STDP=1e-2,
             reduction=reduction,
             wmin=wmin,
             wmax=wmax,

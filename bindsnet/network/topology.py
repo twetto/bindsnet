@@ -839,8 +839,6 @@ class MyelinConnection(AbstractConnection):
         :param source: A layer of nodes from which the connection originates.
         :param target: A layer of nodes to which the connection connects.
         :param nu: Learning rate for both pre- and post-synaptic events.
-        :param reduction: Method for reducing parameter updates along the minibatch
-            dimension.
         :param weight_decay: Constant multiple to decay weights by on each iteration.
 
         Keyword arguments:
@@ -854,6 +852,7 @@ class MyelinConnection(AbstractConnection):
         :param float mmin: Minimum allowed value on the connection myelin.
         :param float mmax: Maximum allowed value on the connection myelin.
         :param float norm: Total weight per target neuron normalization constant.
+        :param float myelin_STDP: Delay Learning rate for post-synaptic events
         :param float myelin_avg: Average delay per target neuron normalization constant.
         :param float trace_decay: Decay multiplier for a synapse's output spike trace
         """
@@ -870,23 +869,30 @@ class MyelinConnection(AbstractConnection):
                 w = torch.clamp(w, self.wmin, self.wmax)
         self.w = Parameter(w, requires_grad=False)
 
-        self.mmin = kwargs.get("mmin", 0.025)
-        self.mmax = kwargs.get("mmax", 0.25)
+        self.mmin = kwargs.get("mmin", 0.020)
+        self.mmax = kwargs.get("mmax", 1.000)
 
-        self.myelin_avg = kwargs.get("myelin_avg", (self.mmax + self.mmin) * 0.5)
+        self.myelin_avg = kwargs.get("myelin_avg", None)
         self.trace_decay = kwargs.get("trace_decay", 0.95)
+
+        self.myelin_STDP = kwargs.get("myelin_STDP", 3e-3)
 
         m = kwargs.get("m", None)
         if m is None:
-            m = self.mmin + torch.rand(source.n, target.n) * (self.mmax - self.mmin)
-        else:
-            m = torch.clamp(m, self.mmin, self.mmax)
+            # m = self.mmin + torch.rand(source.n, target.n) * (self.mmax - self.mmin)
+            m = self.mmin + self.mmax * 0.5 * (
+                torch.randn((source.n, target.n)) * 0.1 + 1.0
+            )
+        m = torch.clamp(m, self.mmin, self.mmax)
 
         self.m = Parameter(m, requires_grad=False)
 
-        self.in_spike = Parameter(torch.zeros_like(self.w), requires_grad=False)
-        self.out_spike = Parameter(torch.zeros_like(self.w), requires_grad=False)
-        self.spike_trace = Parameter(torch.zeros_like(self.w), requires_grad=False)
+        self.in_spike = Parameter(torch.zeros_like(self.m), requires_grad=False)
+        self.out_spike = Parameter(torch.zeros_like(self.m), requires_grad=False)
+        self.spike_trace = Parameter(torch.zeros_like(self.m), requires_grad=False)
+
+        # print(self.out_spike.type())
+        # quit()
 
     def compute(self, s: torch.Tensor) -> torch.Tensor:
         # language=rst
@@ -907,17 +913,17 @@ class MyelinConnection(AbstractConnection):
         self.out_spike += self.in_spike * self.m
 
         # if the output spike buffer is full?
-        mask = self.out_spike >= 1.0
-        mask = mask.float()
+        mask_f = self.out_spike >= 1.0
+        mask_f = mask_f.float()
 
-        self.out_spike -= mask  # decrease the "output" spike
-        self.in_spike -= mask  # decrease the transmitted "input" spike
+        self.out_spike -= mask_f  # decrease the "output" spike
+        self.in_spike -= mask_f  # decrease the transmitted "input" spike
 
-        self.spike_trace += mask
+        self.spike_trace += mask_f
         self.spike_trace *= self.trace_decay
 
         # Compute multiplication of incoming spikes by weights
-        post = mask * self.w
+        post = mask_f * self.w
         return post.sum(0)
 
     def update(self, **kwargs) -> None:
@@ -940,9 +946,17 @@ class MyelinConnection(AbstractConnection):
             w_abs_sum[w_abs_sum == 0] = 1.0
             self.w *= self.norm / w_abs_sum
 
-        m_avg = self.m.sum(0).unsqueeze(0) / self.source.n
-        m_avg[m_avg == 0] = 1.0
-        self.m *= self.myelin_avg / m_avg
+        # per output neuron normalization
+        if self.myelin_avg:
+            m_avg = self.m.sum(0).unsqueeze(0) / self.source.n
+            self.m *= self.myelin_avg / m_avg
+
+        # oom = 1.0 / self.m
+        # m_avg = oom.sum(0).unsqueeze(0) / self.source.n
+        # self.m *= (1.0 / self.myelin_avg) / m_avg
+
+        # per layer normalization
+        # self.m *= self.myelin_avg / self.m.mean()
 
     def reset_state_variables(self) -> None:
         # language=rst

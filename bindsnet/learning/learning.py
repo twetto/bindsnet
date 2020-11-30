@@ -1017,10 +1017,8 @@ class PostPreM(LearningRule):
             self.source.traces and self.target.traces
         ), "Both pre- and post-synaptic nodes must record spike traces."
 
-        if isinstance(connection, (MyelinConnection)):
+        if isinstance(connection, MyelinConnection):
             self.update = self._connection_update
-        elif isinstance(connection, Conv2dConnection):
-            self.update = self._conv2d_connection_update
         else:
             raise NotImplementedError(
                 "This learning rule is not supported for this Connection type."
@@ -1034,11 +1032,9 @@ class PostPreM(LearningRule):
         """
 
         # Post-synaptic update.
-        target_s = self.target.s.view(-1).float() * self.nu[1]
-        source_x = self.connection.spike_trace
+        target_s = self.target.s.view(-1).float()
+        source_x = self.connection.spike_trace  # NxM
         update = source_x * target_s
-
-        self.connection.w += update
-        self.connection.m += update
+        self.connection.m += update * self.connection.myelin_STDP
 
         super().update()
