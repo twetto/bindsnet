@@ -992,6 +992,7 @@ class PostPreM(LearningRule):
         nu: Optional[Union[float, Sequence[float]]] = None,
         reduction: Optional[callable] = None,
         weight_decay: float = 0.0,
+        neg_sym: Optional[float] = None,
         **kwargs
     ) -> None:
         # language=rst
@@ -1013,6 +1014,10 @@ class PostPreM(LearningRule):
             **kwargs
         )
 
+        self.neg_sym = neg_sym
+        if self.neg_sym:
+            print('Got neg symmetric!')
+
         assert (
             self.source.traces and self.target.traces
         ), "Both pre- and post-synaptic nodes must record spike traces."
@@ -1033,8 +1038,20 @@ class PostPreM(LearningRule):
 
         # Post-synaptic update.
         target_s = self.target.s.view(-1).float()
-        source_x = self.connection.spike_trace  # NxM
+        source_x = self.connection.spike_trace
+
+        # auto regulation :
+        if self.neg_sym:
+            source_x -= self.neg_sym * source_x.mean()
+            # target_s -= self.neg_sym * target_s.mean()
+
         update = source_x * target_s
+
+        # if delay dependent learning:
+        dist = self.connection.mmax - self.connection.m
+        update *= dist
+
         self.connection.m += update * self.connection.myelin_STDP
 
+        self.connection.m.clamp(self.connection.mmin, self.connection.mmax)
         super().update()

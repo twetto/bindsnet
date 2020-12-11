@@ -941,15 +941,21 @@ class MyelinConnection(AbstractConnection):
         Normalize delays so each target neuron has avg of connection
         weights & delays equal to ``self.myelin_avg``.
         """
-        if self.norm is not None:
-            w_abs_sum = self.w.abs().sum(0).unsqueeze(0)
-            w_abs_sum[w_abs_sum == 0] = 1.0
-            self.w *= self.norm / w_abs_sum
+        # if self.norm is not None:
+        #     w_abs_sum = self.w.abs().sum(0).unsqueeze(0)
+        #     w_abs_sum[w_abs_sum == 0] = 1.0
+        #     self.w *= self.norm / w_abs_sum
 
         # per output neuron normalization
         if self.myelin_avg:
             m_avg = self.m.sum(0).unsqueeze(0) / self.source.n
             self.m *= self.myelin_avg / m_avg
+            # durations = 1.0 / self.m
+            # duration_avg = durations.sum(0).unsqueeze(0) / self.source.n
+            # correction = (1.0 / self.myelin_avg) / duration_avg
+            # durations *= correction
+            # self.m *= 0.0
+            # self.m += 1.0 / durations
 
         # oom = 1.0 / self.m
         # m_avg = oom.sum(0).unsqueeze(0) / self.source.n
