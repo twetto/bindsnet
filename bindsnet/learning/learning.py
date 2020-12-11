@@ -1016,7 +1016,7 @@ class PostPreM(LearningRule):
 
         self.neg_sym = neg_sym
         if self.neg_sym:
-            print('Got neg symmetric!')
+            print("Got neg symmetric!")
 
         assert (
             self.source.traces and self.target.traces
