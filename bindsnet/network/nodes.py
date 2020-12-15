@@ -615,6 +615,7 @@ class BoostedLIFNodes(Nodes):
             "decay", torch.zeros(*self.shape)
         )  # Set in compute_decays.
         self.register_buffer("v", torch.FloatTensor())  # Neuron voltages.
+        self.register_buffer("v_copy", torch.FloatTensor())  # Neuron voltages.
         self.register_buffer(
             "refrac_count", torch.tensor(0)
         )  # Refractory period counters.
@@ -644,6 +645,7 @@ class BoostedLIFNodes(Nodes):
 
         # Refractoriness and voltage reset.
         self.refrac_count.masked_fill_(self.s, self.refrac)
+        self.v_copy = self.v
         self.v.masked_fill_(self.s, 0)
 
         super().forward(x)

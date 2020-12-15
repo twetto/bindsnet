@@ -890,6 +890,7 @@ class MyelinConnection(AbstractConnection):
         self.in_spike = Parameter(torch.zeros_like(self.m), requires_grad=False)
         self.out_spike = Parameter(torch.zeros_like(self.m), requires_grad=False)
         self.spike_trace = Parameter(torch.zeros_like(self.m), requires_grad=False)
+        self.mask_f = Parameter(torch.zeros_like(self.m), requires_grad=False)
 
         # print(self.out_spike.type())
         # quit()
@@ -913,17 +914,16 @@ class MyelinConnection(AbstractConnection):
         self.out_spike += self.in_spike * self.m
 
         # if the output spike buffer is full?
-        mask_f = self.out_spike >= 1.0
-        mask_f = mask_f.float()
+        self.mask_f += (self.out_spike >= 1.0).float()
 
-        self.out_spike -= mask_f  # decrease the "output" spike
-        self.in_spike -= mask_f  # decrease the transmitted "input" spike
+        self.out_spike -= self.mask_f  # decrease the "output" spike
+        self.in_spike -= self.mask_f  # decrease the transmitted "input" spike
 
-        self.spike_trace += mask_f
+        self.spike_trace += self.mask_f
         self.spike_trace *= self.trace_decay
 
         # Compute multiplication of incoming spikes by weights
-        post = mask_f * self.w
+        post = self.mask_f * self.w
         return post.sum(0)
 
     def update(self, **kwargs) -> None:
@@ -972,4 +972,5 @@ class MyelinConnection(AbstractConnection):
         self.in_spike.zero_()
         self.out_spike.zero_()
         self.spike_trace.zero_()
+        self.mask_f.zero_()
         super().reset_state_variables()
