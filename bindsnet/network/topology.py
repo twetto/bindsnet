@@ -851,8 +851,11 @@ class DelayConnection(AbstractConnection):
         :param float wmax: Maximum allowed value on the connection delays.
         :param float norm: Total delays per target neuron normalization constant.
         :param integer max_delay: Maximum delay for this connection
+        :param float intensity: Synapse transimission multiplicative value
         """
         super().__init__(source, target, nu, reduction, weight_decay, **kwargs)
+
+        self.intensity = kwargs.get("intensity", 1.0)
 
         w = kwargs.get("w", None)
         if w is None:
@@ -886,12 +889,14 @@ class DelayConnection(AbstractConnection):
         :return: Incoming spikes delayed by synaptic delays
         """
 
+        assert s.shape[0] == 1, "DelayConnection only supports batches of 1."
+
         # convert weights to delays, in the given delay range
         delays = (
             (self.w.flatten() - self.wmin) / (self.wmax - self.wmin) * self.max_delay
         ).long()
 
-        # add circular time index
+        # add circular time index to delays
         delays = (delays + self.time_idx) % self.max_delay
 
         # boradcast incoming spikes to all output neurons
@@ -905,7 +910,10 @@ class DelayConnection(AbstractConnection):
             self.delay_buffer[:, self.time_idx]
             .view(self.source.n, self.target.n)
             .sum(0)
-        )
+        ) * self.intensity
+
+        # clear all transmitted spikes at current time
+        self.delay_buffer[:, self.time_idx] = False
 
         # increment circular time pointer
         self.time_idx = (self.time_idx + 1) % self.max_delay

@@ -190,3 +190,28 @@ def rank_order(
             spikes[times[i] - 1, i] = 1
 
     return spikes.reshape(time, *shape)
+
+
+def delay(
+    datum: torch.Tensor, time: int, dt: float = 1.0, device="cpu"
+) -> torch.Tensor:
+    # language=rst
+    """
+    Encodes input values to delays. Inputs must be non-negative.
+
+    :param datum: Tensor of shape ``[n_samples, n_1, ..., n_k]``.
+    :param time: Length of encoding.
+    :param dt: Simulation time step.
+    :return: Tensor of shape ``[time, n_1, ..., n_k]`` of delay-encoded spikes.
+    """
+    assert (datum >= 0).all(), "Inputs must be non-negative"
+
+    shape, size = datum.shape, datum.numel()
+    time = int(time / dt)
+    datum = datum.flatten().clamp_(max=time).long()
+    spikes = torch.zeros(time, size, dtype=torch.bool, device=device)
+
+    index = torch.arange(0, size, dtype=torch.long, device=device)
+    spikes[datum, index] = True
+
+    return spikes.reshape(time, *shape)
