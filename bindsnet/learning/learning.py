@@ -10,6 +10,7 @@ from ..network.topology import (
     Connection,
     Conv2dConnection,
     LocalConnection,
+    DelayConnection,
 )
 from ..utils import im2col_indices
 
@@ -162,7 +163,7 @@ class PostPre(LearningRule):
             self.source.traces and self.target.traces
         ), "Both pre- and post-synaptic nodes must record spike traces."
 
-        if isinstance(connection, (Connection, LocalConnection)):
+        if isinstance(connection, (Connection, LocalConnection, DelayConnection)):
             self.update = self._connection_update
         elif isinstance(connection, Conv2dConnection):
             self.update = self._conv2d_connection_update

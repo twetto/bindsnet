@@ -819,7 +819,7 @@ class SparseConnection(AbstractConnection):
 class DelayConnection(AbstractConnection):
     # language=rst
     """
-    Specifies synapses between one or two populations of neurons.
+    Specifies delay synapses between one or two populations of neurons.
     """
 
     def __init__(
@@ -844,13 +844,13 @@ class DelayConnection(AbstractConnection):
 
         Keyword arguments:
 
-        :param LearningRule update_rule: Modifies connection parameters according to
+        :param LearningRule update_rule: Modifies connection delays according to
             some rule.
-        :param torch.Tensor w: Strengths of synapses.
-        :param torch.Tensor b: Target population bias.
-        :param float wmin: Minimum allowed value on the connection weights.
-        :param float wmax: Maximum allowed value on the connection weights.
-        :param float norm: Total weight per target neuron normalization constant.
+        :param torch.Tensor w: Delays of synapses.
+        :param float wmin: Minimum allowed value on the connection delays.
+        :param float wmax: Maximum allowed value on the connection delays.
+        :param float norm: Total delays per target neuron normalization constant.
+        :param integer max_delay: Maximum delay for this connection
         """
         super().__init__(source, target, nu, reduction, weight_decay, **kwargs)
 
@@ -935,4 +935,7 @@ class DelayConnection(AbstractConnection):
         """
         Contains resetting logic for the connection.
         """
+        # reset time index and empty delay buffer
+        self.time_idx = 0
+        self.delay_buffer.zero_()
         super().reset_state_variables()
