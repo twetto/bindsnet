@@ -868,9 +868,12 @@ class DelayConnection(AbstractConnection):
 
         self.max_delay = kwargs.get("max_delay", 32)
 
-        self.delays_idx = torch.arange(0, source.n * target.n, dtype=torch.long)
-        self.delay_buffer = torch.zeros(
-            source.n * target.n, self.max_delay, dtype=torch.bool
+        self.delays_idx = Parameter(
+            torch.arange(0, source.n * target.n, dtype=torch.long), requires_grad=False
+        )
+        self.delay_buffer = Parameter(
+            torch.zeros(source.n * target.n, self.max_delay, dtype=torch.bool),
+            requires_grad=False,
         )
         self.time_idx = 0
 
@@ -880,23 +883,24 @@ class DelayConnection(AbstractConnection):
         Compute pre-activations given spikes using connection weights.
 
         :param s: Incoming spikes.
-        :return: Incoming spikes multiplied by synaptic weights (with or without
-                 decaying spike activation).
+        :return: Incoming spikes delayed by synaptic delays
         """
-        # Compute multiplication of spike activations by weights and add bias.
 
+        # convert weights to delays, in the given delay range
         delays = (
             (self.w.flatten() - self.wmin) / (self.wmax - self.wmin) * self.max_delay
         ).long()
+
+        # add circular time index
         delays = (delays + self.time_idx) % self.max_delay
 
+        # boradcast incoming spikes to all output neurons
         conn_spikes = s.flatten().repeat(self.target.n)
-        print(conn_spikes.type())
 
-        # fill the delay buffer, according to conn delays
+        # fill the delay buffer, according to connection delays
         self.delay_buffer[self.delays_idx, delays] = conn_spikes
 
-        # sums the afferent spikes from H1
+        # sums the afferent spikes for each ouput neuron
         out_signal = (
             self.delay_buffer[:, self.time_idx]
             .view(self.source.n, self.target.n)
@@ -918,7 +922,7 @@ class DelayConnection(AbstractConnection):
     def normalize(self) -> None:
         # language=rst
         """
-        Normalize weights so each target neuron has sum of connection weights equal to
+        Normalize delays so each target neuron has sum of connection delayss equal to
         ``self.norm``.
         """
         if self.norm is not None:
