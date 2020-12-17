@@ -814,3 +814,121 @@ class SparseConnection(AbstractConnection):
         Contains resetting logic for the connection.
         """
         super().reset_state_variables()
+
+
+class DelayConnection(AbstractConnection):
+    # language=rst
+    """
+    Specifies synapses between one or two populations of neurons.
+    """
+
+    def __init__(
+        self,
+        source: Nodes,
+        target: Nodes,
+        nu: Optional[Union[float, Sequence[float]]] = None,
+        reduction: Optional[callable] = None,
+        weight_decay: float = 0.0,
+        **kwargs
+    ) -> None:
+        # language=rst
+        """
+        Instantiates a :code:`Connection` object.
+
+        :param source: A layer of nodes from which the connection originates.
+        :param target: A layer of nodes to which the connection connects.
+        :param nu: Learning rate for both pre- and post-synaptic events.
+        :param reduction: Method for reducing parameter updates along the minibatch
+            dimension.
+        :param weight_decay: Constant multiple to decay weights by on each iteration.
+
+        Keyword arguments:
+
+        :param LearningRule update_rule: Modifies connection parameters according to
+            some rule.
+        :param torch.Tensor w: Strengths of synapses.
+        :param torch.Tensor b: Target population bias.
+        :param float wmin: Minimum allowed value on the connection weights.
+        :param float wmax: Maximum allowed value on the connection weights.
+        :param float norm: Total weight per target neuron normalization constant.
+        """
+        super().__init__(source, target, nu, reduction, weight_decay, **kwargs)
+
+        w = kwargs.get("w", None)
+        if w is None:
+            if self.wmin == -np.inf or self.wmax == np.inf:
+                w = torch.clamp(torch.rand(source.n, target.n), self.wmin, self.wmax)
+            else:
+                w = self.wmin + torch.rand(source.n, target.n) * (self.wmax - self.wmin)
+        else:
+            if self.wmin != -np.inf or self.wmax != np.inf:
+                w = torch.clamp(w, self.wmin, self.wmax)
+
+        self.w = Parameter(w, requires_grad=False)
+
+        self.max_delay = kwargs.get("max_delay", 32)
+
+        self.delays_idx = torch.arange(0, source.n * target.n, dtype=torch.long)
+        self.delay_buffer = torch.zeros(
+            source.n * target.n, self.max_delay, dtype=torch.bool
+        )
+        self.time_idx = 0
+
+    def compute(self, s: torch.Tensor) -> torch.Tensor:
+        # language=rst
+        """
+        Compute pre-activations given spikes using connection weights.
+
+        :param s: Incoming spikes.
+        :return: Incoming spikes multiplied by synaptic weights (with or without
+                 decaying spike activation).
+        """
+        # Compute multiplication of spike activations by weights and add bias.
+
+        delays = (
+            (self.w.flatten() - self.wmin) / (self.wmax - self.wmin) * self.max_delay
+        ).long()
+        delays = (delays + self.time_idx) % self.max_delay
+
+        conn_spikes = s.flatten().repeat(self.target.n)
+        print(conn_spikes.type())
+
+        # fill the delay buffer, according to conn delays
+        self.delay_buffer[self.delays_idx, delays] = conn_spikes
+
+        # sums the afferent spikes from H1
+        out_signal = (
+            self.delay_buffer[:, self.time_idx]
+            .view(self.source.n, self.target.n)
+            .sum(0)
+        )
+
+        # increment circular time pointer
+        self.time_idx = (self.time_idx + 1) % self.max_delay
+
+        return out_signal.view(s.size(0), *self.target.shape)
+
+    def update(self, **kwargs) -> None:
+        # language=rst
+        """
+        Compute connection's update rule.
+        """
+        super().update(**kwargs)
+
+    def normalize(self) -> None:
+        # language=rst
+        """
+        Normalize weights so each target neuron has sum of connection weights equal to
+        ``self.norm``.
+        """
+        if self.norm is not None:
+            w_abs_sum = self.w.abs().sum(0).unsqueeze(0)
+            w_abs_sum[w_abs_sum == 0] = 1.0
+            self.w *= self.norm / w_abs_sum
+
+    def reset_state_variables(self) -> None:
+        # language=rst
+        """
+        Contains resetting logic for the connection.
+        """
+        super().reset_state_variables()
