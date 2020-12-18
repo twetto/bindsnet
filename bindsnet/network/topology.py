@@ -852,6 +852,7 @@ class DelayConnection(AbstractConnection):
         :param float norm: Total delays per target neuron normalization constant.
         :param integer max_delay: Maximum delay for this connection
         :param float intensity: Synapse transimission multiplicative value
+        :param torch.tensor connection_mask: multiplicative mask
         """
         super().__init__(source, target, nu, reduction, weight_decay, **kwargs)
 
@@ -880,6 +881,14 @@ class DelayConnection(AbstractConnection):
         )
         self.time_idx = 0
 
+        c_m = kwargs.get("connection_mask", None)
+        if c_m is None:
+            self.conn_mask = None
+        else:
+            self.conn_mask = Parameter(
+                torch.tensor(c_m.flatten() > 0, dtype=torch.bool), requires_grad=False
+            )
+
     def compute(self, s: torch.Tensor) -> torch.Tensor:
         # language=rst
         """
@@ -891,6 +900,9 @@ class DelayConnection(AbstractConnection):
 
         assert s.shape[0] == 1, "DelayConnection only supports batches of 1."
 
+        # clip min and max values
+        self.w.clamp_(min=self.wmin, max=self.wmax)
+
         # convert weights to delays, in the given delay range
         delays = (
             (self.w.flatten() - self.wmin) / (self.wmax - self.wmin) * self.max_delay
@@ -900,7 +912,11 @@ class DelayConnection(AbstractConnection):
         delays = (delays + self.time_idx) % self.max_delay
 
         # boradcast incoming spikes to all output neurons
-        conn_spikes = s.flatten().repeat(self.target.n)
+        # conn_spikes2 = s.flatten().repeat(self.target.n)
+        conn_spikes = s.view(self.source.n, 1).repeat(1, self.target.n).flatten()
+
+        if self.conn_mask is not None:
+            conn_spikes &= self.conn_mask
 
         # fill the delay buffer, according to connection delays
         self.delay_buffer[self.delays_idx, delays] = conn_spikes
