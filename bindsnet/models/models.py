@@ -307,7 +307,9 @@ class IncreasingInhibitionNetwork(Network):
     # language=rst
     """
     Implements the inhibitory layer structure of the spiking neural network architecture
-    from `(Hazan et al. 2018) <https://arxiv.org/abs/1807.09374>`_
+    from Unsupervised Learning with Self-Organizing Spiking Neural Networks
+    `(Hazan et al. 2018) <https://doi.org/10.1109/IJCNN.2018.8489673>`_ or
+    arXiv `(Hazan et al. 2018)<https://arxiv.org/abs/1807.09374>`_
     """
 
     def __init__(
