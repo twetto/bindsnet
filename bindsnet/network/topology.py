@@ -919,7 +919,7 @@ class DelayConnection(AbstractConnection):
             conn_spikes &= self.conn_mask
 
         # fill the delay buffer, according to connection delays
-        self.delay_buffer[self.delays_idx, delays] = conn_spikes
+        self.delay_buffer[self.delays_idx, delays] = conn_spikes.bool()
 
         # sums the afferent spikes for each ouput neuron
         out_signal = (
