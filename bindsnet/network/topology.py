@@ -829,6 +829,7 @@ class DelayConnection(AbstractConnection):
         nu: Optional[Union[float, Sequence[float]]] = None,
         reduction: Optional[callable] = None,
         weight_decay: float = 0.0,
+        decay: float = 1.0,
         **kwargs
     ) -> None:
         # language=rst
@@ -841,6 +842,7 @@ class DelayConnection(AbstractConnection):
         :param reduction: Method for reducing parameter updates along the minibatch
             dimension.
         :param weight_decay: Constant multiple to decay weights by on each iteration.
+        :param decay: Decay rate of delayes spiked on each iteration.
 
         Keyword arguments:
 
@@ -872,11 +874,13 @@ class DelayConnection(AbstractConnection):
 
         self.max_delay = kwargs.get("max_delay", 32)
 
+        self.decay = decay
+
         self.delays_idx = Parameter(
             torch.arange(0, source.n * target.n, dtype=torch.long), requires_grad=False
         )
         self.delay_buffer = Parameter(
-            torch.zeros(source.n * target.n, self.max_delay, dtype=torch.bool),
+            torch.zeros(source.n * target.n, self.max_delay, dtype=torch.float),
             requires_grad=False,
         )
         self.time_idx = 0
@@ -919,7 +923,7 @@ class DelayConnection(AbstractConnection):
             conn_spikes &= self.conn_mask
 
         # fill the delay buffer, according to connection delays
-        self.delay_buffer[self.delays_idx, delays] = conn_spikes.bool()
+        self.delay_buffer[self.delays_idx, delays] = conn_spikes.float()  # .bool()
 
         # sums the afferent spikes for each ouput neuron
         out_signal = (
@@ -933,6 +937,9 @@ class DelayConnection(AbstractConnection):
 
         # increment circular time pointer
         self.time_idx = (self.time_idx + 1) % self.max_delay
+
+        # spike decay
+        self.delay_buffer.data = self.delay_buffer.data * self.decay
 
         return out_signal.view(s.size(0), *self.target.shape)
 

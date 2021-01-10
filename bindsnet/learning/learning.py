@@ -283,7 +283,7 @@ class WeightDependentPostPre(LearningRule):
         self.wmin = connection.wmin
         self.wmax = connection.wmax
 
-        if isinstance(connection, (Connection, LocalConnection)):
+        if isinstance(connection, (Connection, LocalConnection, DelayConnection)):
             self.update = self._connection_update
         elif isinstance(connection, Conv2dConnection):
             self.update = self._conv2d_connection_update
