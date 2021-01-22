@@ -939,7 +939,8 @@ class DelayConnection(AbstractConnection):
         self.time_idx = (self.time_idx + 1) % self.max_delay
 
         # spike decay
-        self.delay_buffer.data = self.delay_buffer.data * self.decay
+        # self.delay_buffer.data = self.delay_buffer.data * self.decay
+        self.delay_buffer *= self.decay
 
         return out_signal.view(s.size(0), *self.target.shape)
 
