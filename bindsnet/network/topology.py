@@ -922,6 +922,8 @@ class DelayConnection(AbstractConnection):
         if self.conn_mask is not None:
             conn_spikes &= self.conn_mask
 
+        conn_spikes = conn_spikes.float() * (1 - self.w.flatten())
+
         # fill the delay buffer, according to connection delays
         self.delay_buffer[self.delays_idx, delays] = conn_spikes.float()  # .bool()
 
@@ -939,7 +941,8 @@ class DelayConnection(AbstractConnection):
         self.time_idx = (self.time_idx + 1) % self.max_delay
 
         # spike decay
-        self.delay_buffer.data = self.delay_buffer.data * self.decay
+        # self.delay_buffer.data = self.delay_buffer.data * self.decay
+        # self.delay_buffer *= self.decay
 
         return out_signal.view(s.size(0), *self.target.shape)
 
