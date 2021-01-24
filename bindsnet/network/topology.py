@@ -894,7 +894,7 @@ class DelayConnection(AbstractConnection):
                 torch.tensor(c_m.flatten() > 0, dtype=torch.bool), requires_grad=False
             )
 
-        self.linear_decay = kwargs("linear_decay", False)
+        self.linear_decay = kwargs.get("linear_decay", False)
 
     def compute(self, s: torch.Tensor) -> torch.Tensor:
         # language=rst
