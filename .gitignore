@@ -130,3 +130,6 @@ figures/
 
 # Analyzer log default directory.
 logs/
+
+# plots 
+plots/

@@ -488,7 +488,7 @@ class IncreasingInhibitionDelayNetwork(Network):
             source=self.layers["X"],
             target=self.layers["Y"],
             w=w,
-            update_rule=WeightDependentPostPre,
+            update_rule=PostPre,
             nu=nu,
             reduction=reduction,
             wmin=wmin,
