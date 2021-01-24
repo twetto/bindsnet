@@ -855,6 +855,7 @@ class DelayConnection(AbstractConnection):
         :param integer max_delay: Maximum delay for this connection
         :param float intensity: Synapse transimission multiplicative value
         :param torch.tensor connection_mask: multiplicative mask
+        :param bool linear_decay: should spikes decay linearly in time
         """
         super().__init__(source, target, nu, reduction, weight_decay, **kwargs)
 
@@ -893,6 +894,8 @@ class DelayConnection(AbstractConnection):
                 torch.tensor(c_m.flatten() > 0, dtype=torch.bool), requires_grad=False
             )
 
+        self.linear_decay = kwargs("linear_decay", False)
+
     def compute(self, s: torch.Tensor) -> torch.Tensor:
         # language=rst
         """
@@ -922,8 +925,10 @@ class DelayConnection(AbstractConnection):
         if self.conn_mask is not None:
             conn_spikes &= self.conn_mask
 
-        # linear decay delays
-        conn_spikes = conn_spikes.float() * (1 - self.w.flatten())
+        if self.linear_decay:
+            # linear decay delays
+            conn_spikes = conn_spikes.float() * (1 - self.w.flatten())
+
         # fill the delay buffer, according to connection delays
         self.delay_buffer[self.delays_idx, delays] = conn_spikes.float()  # .bool()
 
