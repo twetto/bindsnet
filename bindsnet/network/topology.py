@@ -856,6 +856,7 @@ class DelayConnection(AbstractConnection):
         :param float intensity: Synapse transimission multiplicative value
         :param torch.tensor connection_mask: multiplicative mask
         :param bool linear_decay: should spikes decay linearly in time
+        :param bool drop_late_spikes: suppress spikes when delay is at maximum
         """
         super().__init__(source, target, nu, reduction, weight_decay, **kwargs)
 
@@ -895,6 +896,7 @@ class DelayConnection(AbstractConnection):
             )
 
         self.linear_decay = kwargs.get("linear_decay", False)
+        self.drop_late_spikes = kwargs.get("drop_late_spikes", False)
 
     def compute(self, s: torch.Tensor) -> torch.Tensor:
         # language=rst
@@ -941,6 +943,11 @@ class DelayConnection(AbstractConnection):
 
         # clear all transmitted spikes at current time
         self.delay_buffer[:, self.time_idx] = False
+
+        # suppress spikes if the delay is maximum
+        if self.drop_late_spikes:
+            late_spikes_time = (self.time_idx - 1) % self.max_delay
+            self.delay_buffer[:, late_spikes_time] = False
 
         # increment circular time pointer
         self.time_idx = (self.time_idx + 1) % self.max_delay
