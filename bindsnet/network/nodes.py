@@ -1316,6 +1316,162 @@ class IzhikevichNodes(Nodes):
         self.u = self.b * self.v
 
 
+class IQIFNodes(Nodes):
+    # language=rst
+    """
+    Layer of `Integer Quadratic Integrate-and-Fire (IQIF) neurons<https://github.com/twetto/iq-neuron>`_.
+    """
+
+    def __init__(
+        self,
+        n: Optional[int] = None,
+        shape: Optional[Iterable[int]] = None,
+        traces: bool = False,
+        traces_additive: bool = False,
+        tc_trace: Union[float, torch.Tensor] = 20.0,
+        trace_scale: Union[float, torch.Tensor] = 1.0,
+        sum_input: bool = False,
+        excitatory: float = 1,
+        thresh: Union[float, torch.Tensor] = 255.0,
+        rest: Union[float, torch.Tensor] = 64.0,
+        unstable: Union[float, torch.Tensor] = 128.0,
+        reset: Union[float, torch.Tensor] = 64.0,
+        lbound: float = 0.0,
+        **kwargs,
+    ) -> None:
+        # language=rst
+        """
+        Instantiates a layer of IQIF neurons.
+
+        :param n: The number of neurons in the layer.
+        :param shape: The dimensionality of the layer.
+        :param traces: Whether to record spike traces.
+        :param traces_additive: Whether to record spike traces additively.
+        :param tc_trace: Time constant of spike trace decay.
+        :param trace_scale: Scaling factor for spike trace.
+        :param sum_input: Whether to sum all inputs.
+        :param excitatory: Percent of excitatory (vs. inhibitory) neurons in the layer; in range ``[0, 1]``.
+        :param thresh: Spike threshold voltage.
+        :param rest: Resting membrane voltage.
+        :param unstable: Unstable membrane voltage.
+        :param reset: Reset membrane voltage.
+        :param lbound: Lower bound of the voltage.
+        """
+        super().__init__(
+            n=n,
+            shape=shape,
+            traces=traces,
+            traces_additive=traces_additive,
+            tc_trace=tc_trace,
+            trace_scale=trace_scale,
+            sum_input=sum_input,
+        )
+
+        self.register_buffer("rest", torch.tensor(rest))  # Rest voltage.
+        self.register_buffer("thresh", torch.tensor(thresh))  # Spike threshold voltage.
+        self.register_buffer("unstable", torch.tensor(unstable))  # Unstable voltage.
+        self.register_buffer("reset", torch.tensor(rest))  # Rest voltage.
+        self.lbound = lbound
+
+        self.register_buffer("a", None)
+        self.register_buffer("b", None)
+        self.register_buffer("f_min", None)
+        self.register_buffer("S", None)
+        self.register_buffer("excitatory", None)
+
+        if excitatory > 1:
+            excitatory = 1
+        elif excitatory < 0:
+            excitatory = 0
+
+        if excitatory == 1:
+            self.a = 1.0 * torch.ones(n)
+            self.b = 1.0 * torch.ones(n)
+            self.S = 0.5 * torch.rand(n, n)
+            self.excitatory = torch.ones(n).byte()
+
+        elif excitatory == 0:
+            self.a = 1.0 * torch.ones(n)
+            self.b = 1.0 * torch.ones(n)
+            self.S = -torch.rand(n, n)
+            self.excitatory = torch.zeros(n).byte()
+
+        else:
+            self.excitatory = torch.zeros(n).byte()
+
+            ex = int(n * excitatory)
+            inh = n - ex
+
+            # init
+            self.a = torch.zeros(n)
+            self.b = torch.zeros(n)
+            self.S = torch.zeros(n, n)
+
+            # excitatory
+            self.a[:ex] = 1.0 * torch.ones(ex)
+            self.b[:ex] = 1.0 * torch.ones(ex)
+            self.S[:, :ex] = 0.5 * torch.rand(n, ex)
+            self.excitatory[:ex] = 1
+
+            # inhibitory
+            self.a[ex:] = 1.0 * torch.ones(ex)
+            self.b[ex:] = 1.0 * torch.ones(ex)
+            self.S[:, ex:] = -torch.rand(n, inh)
+            self.excitatory[ex:] = 0
+
+        self.f_min = (self.a * self.rest + self.b * self.unstable) / (self.a + self.b)
+        self.register_buffer("v", self.rest * torch.ones(n))  # Neuron voltages.
+
+    def forward(self, x: torch.Tensor) -> None:
+        # language=rst
+        """
+        Runs a single simulation step.
+
+        :param x: Inputs to the layer.
+        """
+        # Check for spiking neurons.
+        self.s = self.v >= self.thresh
+
+        # Voltage reset.
+        self.v = torch.where(self.s, self.reset, self.v)
+
+        # Add inter-columnar input.
+        if self.s.any():
+            x += torch.cat(
+                [self.S[:, self.s[i]].sum(dim=1)[None] for i in range(self.s.shape[0])],
+                dim=0,
+            )
+
+        # Apply v updates.
+        self.v += self.dt * torch.where(self.v < self.f_min,
+                                        self.a * (self.rest - self.v) / 8,
+                                        self.b * (self.v - self.unstable) / 8)
+
+        # Voltage clipping to lower bound.
+        if self.lbound is not None:
+            self.v.masked_fill_(self.v < self.lbound, self.lbound)
+
+        super().forward(x)
+
+    def reset_state_variables(self) -> None:
+        # language=rst
+        """
+        Resets relevant state variables.
+        """
+        super().reset_state_variables()
+        self.v.fill_(self.rest)  # Neuron voltages.
+
+    def set_batch_size(self, batch_size) -> None:
+        # language=rst
+        """
+        Sets mini-batch size. Called when layer is added to a network.
+
+        :param batch_size: Mini-batch size.
+        """
+        super().set_batch_size(batch_size=batch_size)
+        self.v = self.rest * torch.ones(batch_size, *self.shape, device=self.v.device)
+
+
 class CSRMNodes(Nodes):
     """
     A layer of Cumulative Spike Response Model (Gerstner and van Hemmen 1992, Gerstner et al. 1996) nodes.
