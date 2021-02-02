@@ -1336,7 +1336,7 @@ class IQIFNodes(Nodes):
         rest: Union[float, torch.Tensor] = 64.0,
         unstable: Union[float, torch.Tensor] = 128.0,
         reset: Union[float, torch.Tensor] = 64.0,
-        lbound: float = 0.0,
+        lbound: float = None,
         **kwargs,
     ) -> None:
         # language=rst
@@ -1436,6 +1436,7 @@ class IQIFNodes(Nodes):
         self.v = torch.where(self.s, self.reset, self.v)
 
         # Add inter-columnar input.
+        x *= 12
         if self.s.any():
             x += torch.cat(
                 [self.S[:, self.s[i]].sum(dim=1)[None] for i in range(self.s.shape[0])],
@@ -1444,8 +1445,8 @@ class IQIFNodes(Nodes):
 
         # Apply v updates.
         self.v += self.dt * torch.where(self.v < self.f_min,
-                                        self.a * (self.rest - self.v) / 8,
-                                        self.b * (self.v - self.unstable) / 8)
+                                        self.a * (self.rest - self.v) + x,
+                                        self.b * (self.v - self.unstable) + x)
 
         # Voltage clipping to lower bound.
         if self.lbound is not None:
