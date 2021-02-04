@@ -1336,7 +1336,9 @@ class IQIFNodes(Nodes):
         rest: Union[float, torch.Tensor] = 64.0,
         unstable: Union[float, torch.Tensor] = 128.0,
         reset: Union[float, torch.Tensor] = 64.0,
-        lbound: float = None,
+        a: Union[float, torch.Tensor] = 1.0,
+        b: Union[float, torch.Tensor] = 1.0,
+        lbound: float = 0.0,
         **kwargs,
     ) -> None:
         # language=rst
@@ -1371,10 +1373,12 @@ class IQIFNodes(Nodes):
         self.register_buffer("thresh", torch.tensor(thresh))  # Spike threshold voltage.
         self.register_buffer("unstable", torch.tensor(unstable))  # Unstable voltage.
         self.register_buffer("reset", torch.tensor(rest))  # Rest voltage.
+        self.register_buffer("a", torch.tensor(a))
+        self.register_buffer("b", torch.tensor(b))
         self.lbound = lbound
 
-        self.register_buffer("a", None)
-        self.register_buffer("b", None)
+        #self.register_buffer("a", None)
+        #self.register_buffer("b", None)
         self.register_buffer("f_min", None)
         self.register_buffer("S", None)
         self.register_buffer("excitatory", None)
@@ -1385,14 +1389,14 @@ class IQIFNodes(Nodes):
             excitatory = 0
 
         if excitatory == 1:
-            self.a = 1.0 * torch.ones(n)
-            self.b = 1.0 * torch.ones(n)
+            #self.a = 1.0 * torch.ones(n)
+            #self.b = 1.0 * torch.ones(n)
             self.S = 0.5 * torch.rand(n, n)
             self.excitatory = torch.ones(n).byte()
 
         elif excitatory == 0:
-            self.a = 1.0 * torch.ones(n)
-            self.b = 1.0 * torch.ones(n)
+            #self.a = 1.0 * torch.ones(n)
+            #self.b = 1.0 * torch.ones(n)
             self.S = -torch.rand(n, n)
             self.excitatory = torch.zeros(n).byte()
 
@@ -1403,19 +1407,19 @@ class IQIFNodes(Nodes):
             inh = n - ex
 
             # init
-            self.a = torch.zeros(n)
-            self.b = torch.zeros(n)
+            #self.a = torch.zeros(n)
+            #self.b = torch.zeros(n)
             self.S = torch.zeros(n, n)
 
             # excitatory
-            self.a[:ex] = 1.0 * torch.ones(ex)
-            self.b[:ex] = 1.0 * torch.ones(ex)
+            #self.a[:ex] = 1.0 * torch.ones(ex)
+            #self.b[:ex] = 1.0 * torch.ones(ex)
             self.S[:, :ex] = 0.5 * torch.rand(n, ex)
             self.excitatory[:ex] = 1
 
             # inhibitory
-            self.a[ex:] = 1.0 * torch.ones(ex)
-            self.b[ex:] = 1.0 * torch.ones(ex)
+            #self.a[ex:] = 1.0 * torch.ones(ex)
+            #self.b[ex:] = 1.0 * torch.ones(ex)
             self.S[:, ex:] = -torch.rand(n, inh)
             self.excitatory[ex:] = 0
 
@@ -1436,7 +1440,6 @@ class IQIFNodes(Nodes):
         self.v = torch.where(self.s, self.reset, self.v)
 
         # Add inter-columnar input.
-        x *= 12
         if self.s.any():
             x += torch.cat(
                 [self.S[:, self.s[i]].sum(dim=1)[None] for i in range(self.s.shape[0])],
