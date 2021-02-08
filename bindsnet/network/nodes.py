@@ -1329,16 +1329,21 @@ class IQIFNodes(Nodes):
         traces: bool = True,
         traces_additive: bool = True,
         tc_trace: Union[float, torch.Tensor] = 20.0,
-        trace_scale: Union[float, torch.Tensor] = 1.0,
         sum_input: bool = False,
-        excitatory: float = 1,
-        thresh: Union[float, torch.Tensor] = 255.0,
-        rest: Union[float, torch.Tensor] = 64.0,
-        unstable: Union[float, torch.Tensor] = 128.0,
-        reset: Union[float, torch.Tensor] = 64.0,
-        a: Union[float, torch.Tensor] = 1.0,
-        b: Union[float, torch.Tensor] = 1.0,
-        lbound: float = 0.0,
+        #thresh: Union[float, torch.Tensor] = 255.0,
+        #rest: Union[float, torch.Tensor] = 64.0,
+        #unstable: Union[float, torch.Tensor] = 128.0,
+        #reset: Union[float, torch.Tensor] = 64.0,
+        #a: Union[float, torch.Tensor] = 1.0,
+        #b: Union[float, torch.Tensor] = 1.0,
+        #lbound: float = 0.0,
+        thresh: Union[int, torch.Tensor] = 255,
+        rest: Union[int, torch.Tensor] = 64,
+        unstable: Union[int, torch.Tensor] = 128,
+        reset: Union[int, torch.Tensor] = 64,
+        a: Union[int, torch.Tensor] = 1,
+        b: Union[int, torch.Tensor] = 1,
+        lbound: int = 0,
         **kwargs,
     ) -> None:
         # language=rst
@@ -1350,9 +1355,7 @@ class IQIFNodes(Nodes):
         :param traces: Whether to record spike traces.
         :param traces_additive: Whether to record spike traces additively.
         :param tc_trace: Time constant of spike trace decay.
-        :param trace_scale: Scaling factor for spike trace.
         :param sum_input: Whether to sum all inputs.
-        :param excitatory: Percent of excitatory (vs. inhibitory) neurons in the layer; in range ``[0, 1]``.
         :param thresh: Spike threshold voltage.
         :param rest: Resting membrane voltage.
         :param unstable: Unstable membrane voltage.
@@ -1365,66 +1368,25 @@ class IQIFNodes(Nodes):
             traces=traces,
             traces_additive=traces_additive,
             tc_trace=tc_trace,
-            trace_scale=trace_scale,
             sum_input=sum_input,
         )
 
-        self.register_buffer("rest", torch.tensor(rest))  # Rest voltage.
-        self.register_buffer("thresh", torch.tensor(thresh))  # Spike threshold voltage.
-        self.register_buffer("unstable", torch.tensor(unstable))  # Unstable voltage.
-        self.register_buffer("reset", torch.tensor(rest))  # Rest voltage.
-        self.register_buffer("a", torch.tensor(a))
-        self.register_buffer("b", torch.tensor(b))
+        self.register_buffer("num", torch.tensor(n))
+        self.register_buffer("rest", torch.tensor(rest).to(torch.short))  # Rest voltage.
+        self.register_buffer("thresh", torch.tensor(thresh).to(torch.short))  # Spike threshold voltage.
+        self.register_buffer("unstable", torch.tensor(unstable).to(torch.short))  # Unstable voltage.
+        self.register_buffer("reset", torch.tensor(reset).to(torch.short))  # Reset voltage.
+        self.register_buffer("a", torch.tensor(a).to(torch.short))
+        self.register_buffer("b", torch.tensor(b).to(torch.short))
         self.lbound = lbound
 
         #self.register_buffer("a", None)
         #self.register_buffer("b", None)
         self.register_buffer("f_min", None)
-        self.register_buffer("S", None)
-        self.register_buffer("excitatory", None)
-
-        if excitatory > 1:
-            excitatory = 1
-        elif excitatory < 0:
-            excitatory = 0
-
-        if excitatory == 1:
-            #self.a = 1.0 * torch.ones(n)
-            #self.b = 1.0 * torch.ones(n)
-            self.S = 0.5 * torch.rand(n, n)
-            self.excitatory = torch.ones(n).byte()
-
-        elif excitatory == 0:
-            #self.a = 1.0 * torch.ones(n)
-            #self.b = 1.0 * torch.ones(n)
-            self.S = -torch.rand(n, n)
-            self.excitatory = torch.zeros(n).byte()
-
-        else:
-            self.excitatory = torch.zeros(n).byte()
-
-            ex = int(n * excitatory)
-            inh = n - ex
-
-            # init
-            #self.a = torch.zeros(n)
-            #self.b = torch.zeros(n)
-            self.S = torch.zeros(n, n)
-
-            # excitatory
-            #self.a[:ex] = 1.0 * torch.ones(ex)
-            #self.b[:ex] = 1.0 * torch.ones(ex)
-            self.S[:, :ex] = 0.5 * torch.rand(n, ex)
-            self.excitatory[:ex] = 1
-
-            # inhibitory
-            #self.a[ex:] = 1.0 * torch.ones(ex)
-            #self.b[ex:] = 1.0 * torch.ones(ex)
-            self.S[:, ex:] = -torch.rand(n, inh)
-            self.excitatory[ex:] = 0
-
-        self.f_min = (self.a * self.rest + self.b * self.unstable) / (self.a + self.b)
-        self.register_buffer("v", self.rest * torch.ones(n))  # Neuron voltages.
+        #self.register_buffer("S", None)
+        
+        self.f_min = (self.a * self.rest + self.b * self.unstable) // (self.a + self.b)
+        self.register_buffer("v", self.rest * torch.ones(n, dtype=torch.short))  # Neuron voltages.
 
     def forward(self, x: torch.Tensor) -> None:
         # language=rst
@@ -1433,23 +1395,28 @@ class IQIFNodes(Nodes):
 
         :param x: Inputs to the layer.
         """
-        # Check for spiking neurons.
-        self.s = self.v >= self.thresh
-
-        # Voltage reset.
-        self.v = torch.where(self.s, self.reset, self.v)
-
+        
         # Add inter-columnar input.
+        '''
         if self.s.any():
             x += torch.cat(
                 [self.S[:, self.s[i]].sum(dim=1)[None] for i in range(self.s.shape[0])],
                 dim=0,
             )
+        '''
+        #x = x.to(torch.int)
+        x = x.to(torch.short)
 
         # Apply v updates.
-        self.v += self.dt * torch.where(self.v < self.f_min,
-                                        self.a * (self.rest - self.v) + x,
-                                        self.b * (self.v - self.unstable) + x)
+        self.v += torch.where(self.v < self.f_min,
+                              ((self.a*(self.rest-self.v)) >> 3) + x,
+                              ((self.b*(self.v-self.unstable)) >> 3) + x)
+
+        # Check for spiking neurons.
+        self.s = self.v >= self.thresh
+
+        # Voltage reset
+        self.v = torch.where(self.s, self.reset, self.v)
 
         # Voltage clipping to lower bound.
         if self.lbound is not None:
@@ -1473,7 +1440,7 @@ class IQIFNodes(Nodes):
         :param batch_size: Mini-batch size.
         """
         super().set_batch_size(batch_size=batch_size)
-        self.v = self.rest * torch.ones(batch_size, *self.shape, device=self.v.device)
+        self.v = self.rest * torch.ones(batch_size, *self.shape, device=self.v.device, dtype=torch.short)
 
 
 class CSRMNodes(Nodes):
