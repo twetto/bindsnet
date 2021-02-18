@@ -120,21 +120,23 @@ rates = torch.zeros((n_neurons, n_classes), device=device)
 accuracy = {"all": [], "proportion": []}
 
 # Voltage recording for excitatory and inhibitory layers.
-som_voltage_monitor = Monitor(network.layers["Y"], ["v"], time=int(time / dt))
+som_voltage_monitor = Monitor(
+    network.layers["Y"], ["v"], time=int(time / dt), device=device
+)
 network.add_monitor(som_voltage_monitor, name="som_voltage")
 
 # Set up monitors for spikes and voltages
 spikes = {}
 for layer in set(network.layers):
     spikes[layer] = Monitor(
-        network.layers[layer], state_vars=["s"], time=int(time / dt)
+        network.layers[layer], state_vars=["s"], time=int(time / dt), device=device
     )
     network.add_monitor(spikes[layer], name="%s_spikes" % layer)
 
 voltages = {}
 for layer in set(network.layers) - {"X"}:
     voltages[layer] = Monitor(
-        network.layers[layer], state_vars=["v"], time=int(time / dt)
+        network.layers[layer], state_vars=["v"], time=int(time / dt), device=device
     )
     network.add_monitor(voltages[layer], name="%s_voltages" % layer)
 
@@ -330,7 +332,7 @@ test_dataset = MNIST(
 accuracy = {"all": 0, "proportion": 0}
 
 # Record spikes during the simulation.
-spike_record = torch.zeros(1, int(time / dt), n_neurons)
+spike_record = torch.zeros(1, int(time / dt), n_neurons, device=device)
 
 # Train the network.
 print("\nBegin testing\n")
